@@ -50,8 +50,9 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     char **linkLists_{nullptr};
     std::vector<int> element_levels_;  // keeps level of each element
     
-    // array of pointers where knnsets[i] = knn priority queue for point i
-    // std::vector<std::priorityqueue<dist_t, tableint> *> knnsets_; 
+    // array of pointers where knnsets[i] = knn priority queue for point i 
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>
+    **knnsets_{nullptr}; 
 
     size_t data_size_{0};
 
@@ -140,10 +141,14 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
         /*
         allocate space for knn set pointers
-        try { knnsets_.reserve(max_elements_); }
-        catch (int e) { throw std::runtime_error ("Something went wrong reserving space for knnsets"); }
-        
+        knnsets_[internal_id] = knn priority queue for point internal_id
         */
+       knnsets_ = (std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> **)
+        malloc(sizeof(void *) * max_elements_);
+       if (knnsets_ == nullptr)
+        throw std::runtime_error("Not enough memory to allocate knnset pointers");
+
+       std::cout << "allocated knnset pointers" << std::endl;
     }
 
 
@@ -1214,13 +1219,29 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 }
                 */
 
+                if (level == 0) {
+                    auto knnset = initKNNSet(cur_c);
+                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> temp;
+                    while (!top_candidates.empty()) {
+                        auto item = top_candidates.top();
+                        dist_t item_dist = item.first;  // distance between inserted point and this candidate
+                        tableint item_id = item.second; // internal id of candidate
+                        auto nsofitem = getKNNSet(item_id);
+                        refineKNN(item_dist, item_id, knnset); // insert the candidate into inserted point's KNNset
+                        refineKNN(item_dist, cur_c, nsofitem); // insert the inserted point into the candidate's KNNset
+                        temp.emplace(item_dist, item_id);
+                        top_candidates.pop();
+                    }
+                    top_candidates = temp;
+                }
+
                 currObj = mutuallyConnectNewElement(data_point, cur_c, top_candidates, level, false);
             }
         } else {
             // Do nothing for the first element
             enterpoint_node_ = 0;
             maxlevel_ = curlevel;
-            // knnsets_[0] = new priorityqueue
+            initKNNSet(0);
         }
 
         // Releasing lock for the maximum level
@@ -1229,6 +1250,44 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             maxlevel_ = curlevel;
         }
         return cur_c;
+    }
+
+    // retrieve pointer to the knnset for this item
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> *
+    getKNNSet(tableint internal_id) {
+        return knnsets_[internal_id];
+    }
+
+    // convert the priority queue knnset of some point to a ordered vector, return it
+    std::vector<std::pair<dist_t, tableint>> *
+    getKNNs(tableint internal_id) {
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> *knns = getKNNSet(internal_id);
+        int num = knns->size();
+        std::vector<std::pair<dist_t, tableint>> *list = new std::vector<std::pair<dist_t, tableint>>;
+        
+        // this is inefficient i think so fix later
+        for (int i = num - 1; i >= 0; i--) {
+            list->emplace(list->begin(),knns->top());
+            knns->pop();
+        }
+        return list;
+    }
+
+    // initialize the element's knnset and return a pointer to the knn set
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> *
+    initKNNSet(tableint internal_id) {
+        auto knnset = new std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>>;
+        knnsets_[internal_id] = knnset;
+        return knnset;
+    }
+
+    // given a candidate neighbor and its distance, insert it into the KNN list
+    // if it would improve the KNN list
+    void refineKNN(tableint candidate, dist_t dist, std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> *knnset) {
+        if (knnset->size() < 100 || knnset->top().first > dist)
+            knnset->emplace(dist, candidate);
+        if (knnset->size() > 100)
+            knnset->pop(); // do i need to free from memory the std::pair that gets popped?
     }
 
     /**
