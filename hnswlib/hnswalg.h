@@ -1190,35 +1190,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 
                 /* Update initial KNNSets for each inserted data point
                     may need mutexes for accessing knn sets
-
-                if (level == 0) {
-                    // for now dumb solution, retrieve top 100 from top_candidates
-                    // and reinsert them back into top_candidates
-                    
-                    knnsets_[cur_c] = new priorityqueue // allocate new knnset for inserted datapoint
-
-                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> temp;
-                    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>> *knnset = knnsets_[cur_c];
-                    
-                    for (int j = top_candidates.size()-1; j >= 0; j--) {
-                        item = top_candidates.top()
-                        if (j < 100) knnset->emplace(item.first, item.second) // should knnset size be k=100 or ef_construction?
-                        
-                        // update inserted node's found-neighbors' knnsets with inserted node if applicable
-                        nsofitem = getKNNSet(item.second)
-                        if (nsofitem->top().first > item.first) {
-                            nsofitem->emplace(item.first, cur_c)
-                            if (nsofitem->size() > 100) nsofitem.pop() 
-                        }
-                        temp.emplace(item.first, item.second)
-                        top_candidates.pop()
-                    }
-
-                    top_candidates = temp
-                    
-                }
                 */
-
                 if (level == 0) {
                     auto knnset = initKNNSet(cur_c);
                     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> temp;
