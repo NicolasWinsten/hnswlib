@@ -1256,6 +1256,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     // given a candidate neighbor and its distance, insert it into the KNN list
     // if it would improve the KNN list
     void refineKNN(tableint candidate, dist_t dist, std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> *knnset) {
+        // may need mutex here
         if (knnset->size() < 100 || knnset->top().first > dist)
             knnset->emplace(dist, candidate);
         if (knnset->size() > 100)
@@ -1265,14 +1266,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     /**
      * Additional methods
      * 
-     * retrieve the priority queue tracking the current KNN set for data point q
-     * std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>> *
-     * getKNNSet(tableint q) { return knnsets_[q]; }
-     * 
      * Return the best neighbors for item q from deepsearching HNSW
      * std::priorityqueue<....> deepSearch(tableint q) {
      *  knns = getKNNSet(q)
-     *  ef_construction_ = 100
+     *  ef_construction_ = 100 // set ef_construction_ to 100
      *  newknns = searchBaseLayer(knns, getDataByInternalId(q), 0)
      *  delete knns
      *  return newknns
