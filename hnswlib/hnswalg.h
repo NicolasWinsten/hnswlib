@@ -1227,8 +1227,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                         dist_t item_dist = item.first;  // distance between inserted point and this candidate
                         tableint item_id = item.second; // internal id of candidate
                         auto nsofitem = getKNNSet(item_id);
-                        refineKNN(item_dist, item_id, knnset); // insert the candidate into inserted point's KNNset
-                        refineKNN(item_dist, cur_c, nsofitem); // insert the inserted point into the candidate's KNNset
+                        refineKNN(item_id, item_dist, knnset); // insert the candidate into inserted point's KNNset
+                        refineKNN(cur_c, item_dist, nsofitem); // insert the inserted point into the candidate's KNNset
                         temp.emplace(item_dist, item_id);
                         top_candidates.pop();
                     }
