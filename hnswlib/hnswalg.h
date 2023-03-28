@@ -1367,8 +1367,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     */
 
     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
-    deepSearch(tableint q) {
-        return nbgp(q, 100);
+    deepSearch(tableint q, size_t ef) {
+        return nbgp(q, ef);
     }
 
 
