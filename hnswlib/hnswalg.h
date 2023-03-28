@@ -1263,6 +1263,96 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
             knnset->pop(); // do i need to free from memory the std::pair that gets popped?
     }
 
+    // perform standard search on the bottom layer for the nearest neighbors of data point with internal id q
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    nbgp(tableint q, size_t ef) {
+        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+        vl_type *visited_array = vl->mass;
+        vl_type visited_array_tag = vl->curV;
+
+        auto knns = getKNNSet(q);
+        auto data_point = getDataByInternalId(q);
+        int layer = 0;
+
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidateSet;
+
+        dist_t lowerBound;
+        tableint ep_id;
+        while (!knns->empty()) {
+            std::pair<dist_t, tableint> initPair = knns->top();
+            knns->pop();
+            tableint ep_id = initPair.second;
+            dist_t dist = initPair.first;
+            top_candidates.emplace(dist, ep_id);
+            
+            candidateSet.emplace(-dist, ep_id);
+            visited_array[ep_id] = visited_array_tag;
+        }
+        lowerBound = top_candidates.top().first;
+        
+
+        while (!candidateSet.empty()) {
+            std::pair<dist_t, tableint> curr_el_pair = candidateSet.top();
+            if ((-curr_el_pair.first) > lowerBound && top_candidates.size() == ef) {
+                break;
+            }
+            candidateSet.pop();
+
+            tableint curNodeNum = curr_el_pair.second;
+
+            std::unique_lock <std::mutex> lock(link_list_locks_[curNodeNum]);
+
+            int *data;  // = (int *)(linkList0_ + curNodeNum * size_links_per_element0_);
+            if (layer == 0) {
+                data = (int*)get_linklist0(curNodeNum);
+            } else {
+                data = (int*)get_linklist(curNodeNum, layer);
+//                    data = (int *) (linkLists_[curNodeNum] + (layer - 1) * size_links_per_element_);
+            }
+            size_t size = getListCount((linklistsizeint*)data);
+            tableint *datal = (tableint *) (data + 1);
+#ifdef USE_SSE
+            _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
+            _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
+            _mm_prefetch(getDataByInternalId(*datal), _MM_HINT_T0);
+            _mm_prefetch(getDataByInternalId(*(datal + 1)), _MM_HINT_T0);
+#endif
+
+            for (size_t j = 0; j < size; j++) {
+                tableint candidate_id = *(datal + j);
+//                    if (candidate_id == 0) continue;
+#ifdef USE_SSE
+                _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
+                _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
+#endif
+                if (visited_array[candidate_id] == visited_array_tag) continue;
+                visited_array[candidate_id] = visited_array_tag;
+                char *currObj1 = (getDataByInternalId(candidate_id));
+
+                dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                if (top_candidates.size() < ef || lowerBound > dist1) {
+                    candidateSet.emplace(-dist1, candidate_id);
+#ifdef USE_SSE
+                    _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
+#endif
+
+                    if (!isMarkedDeleted(candidate_id))
+                        top_candidates.emplace(dist1, candidate_id);
+
+                    if (top_candidates.size() > ef)
+                        top_candidates.pop();
+
+                    if (!top_candidates.empty())
+                        lowerBound = top_candidates.top().first;
+                }
+            }
+        }
+        visited_list_pool_->releaseVisitedList(vl);
+
+        return top_candidates;
+    }
+
     /**
      * Additional methods
      * 
@@ -1275,6 +1365,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
      *  return newknns
      * }
     */
+
+    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+    deepSearch(tableint q) {
+        return nbgp(q, 100);
+    }
 
 
     std::priority_queue<std::pair<dist_t, labeltype >>
