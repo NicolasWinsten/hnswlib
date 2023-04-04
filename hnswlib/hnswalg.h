@@ -41,6 +41,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     std::mutex global;
     std::vector<std::mutex> link_list_locks_;
 
+    std::vector<std::mutex> knnset_locks_;
+
     tableint enterpoint_node_{0};
 
     size_t size_links_level0_{0};
@@ -99,7 +101,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
         : link_list_locks_(max_elements),
             label_op_locks_(MAX_LABEL_OPERATION_LOCKS),
             element_levels_(max_elements),
-            allow_replace_deleted_(allow_replace_deleted) {
+            allow_replace_deleted_(allow_replace_deleted),
+            knnset_locks_(max_elements) {
         max_elements_ = max_elements;
         num_deleted_ = 0;
         data_size_ = s->get_data_size();
@@ -1199,8 +1202,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                         dist_t item_dist = item.first;  // distance between inserted point and this candidate
                         tableint item_id = item.second; // internal id of candidate
                         auto nsofitem = getKNNSet(item_id);
-                        refineKNN(item_id, item_dist, knnset); // insert the candidate into inserted point's KNNset
-                        refineKNN(cur_c, item_dist, nsofitem); // insert the inserted point into the candidate's KNNset
+                        refineKNN(item_id, item_dist, cur_c); // insert the candidate into inserted point's KNNset
+                        refineKNN(cur_c, item_dist, item_id); // insert the inserted point into the candidate's KNNset
                         temp.emplace(item_dist, item_id);
                         top_candidates.pop();
                     }
@@ -1231,6 +1234,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
     }
 
     // convert the priority queue knnset of some point to a ordered vector, return it
+    // may not need, remove
     std::vector<std::pair<dist_t, tableint>> *
     getKNNs(tableint internal_id) {
         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> *knns = getKNNSet(internal_id);
@@ -1255,8 +1259,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
     // given a candidate neighbor and its distance, insert it into the KNN list
     // if it would improve the KNN list
-    void refineKNN(tableint candidate, dist_t dist, std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>> *knnset) {
+    void refineKNN(tableint candidate, dist_t dist, tableint q) {
         // may need mutex here
+        std::unique_lock <std::mutex> lock(knnset_locks_[q]);
+        auto knnset = getKNNSet(q);
         if (knnset->size() < 100 || knnset->top().first > dist)
             knnset->emplace(dist, candidate);
         if (knnset->size() > 100)
@@ -1301,6 +1307,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
             tableint curNodeNum = curr_el_pair.second;
 
+            // may not need this mutex
             std::unique_lock <std::mutex> lock(link_list_locks_[curNodeNum]);
 
             int *data;  // = (int *)(linkList0_ + curNodeNum * size_links_per_element0_);

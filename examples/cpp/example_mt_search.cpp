@@ -66,7 +66,7 @@ int main() {
     int M = 16;                 // Tightly connected with internal dimensionality of the data
                                 // strongly affects the memory consumption
     int ef_construction = 200;  // Controls index search speed/build speed tradeoff
-    int num_threads = 20;       // Number of threads for operations with index
+    int num_threads = 16;       // Number of threads for operations with index
 
     // Initing index
     hnswlib::L2Space space(dim);
@@ -87,16 +87,27 @@ int main() {
     });
 
     // Query the elements for themselves and measure recall
-    std::vector<hnswlib::labeltype> neighbors(max_elements);
+    std::vector<hnswlib::labeltype> knn1NeighborByHNSW(max_elements);
+    std::vector<hnswlib::labeltype> knn1NeighborByNBPG(max_elements);
     ParallelFor(0, max_elements, num_threads, [&](size_t row, size_t threadId) {
-        std::priority_queue<std::pair<float, hnswlib::labeltype>> result = alg_hnsw->searchKnn(data + dim * row, 1);
+        std::priority_queue<std::pair<float, hnswlib::labeltype>> result = alg_hnsw->searchKnn(data + dim * row, 2);
         hnswlib::labeltype label = result.top().second;
-        neighbors[row] = label;
+        knn1NeighborByHNSW[row] = label;
+
+        auto myresult = alg_hnsw->deepSearch(row, 110);
+        // prune results to best two
+        // the first is the data point i itself
+        // the second is its approximate nearest neighbor
+        while (myresult.size() > 2) {
+            auto x = myresult.top();
+            myresult.pop();
+        }
+        knn1NeighborByNBPG[row] = myresult.top().second;
+
     });
     float correct = 0;
     for (int i = 0; i < max_elements; i++) {
-        hnswlib::labeltype label = neighbors[i];
-        if (label == i) correct++;
+        if (knn1NeighborByHNSW[i] == knn1NeighborByNBPG[i]) correct++;
     }
     float recall = correct / max_elements;
     std::cout << "Recall: " << recall << "\n";
