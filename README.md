@@ -1,6 +1,8 @@
 # Hnswlib - fast approximate nearest neighbor search
 Header-only C++ HNSW implementation with python bindings, insertions and updates.
 
+applied to KNN graph construction
+
 **NEWS:**
 
 **version 0.7.0** 
